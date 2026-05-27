@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Robotic Arm for Object Manipulation — Parushi Sharma</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --cream: #f5f2ec; --ink: #1a1814; --dust: #9e9891;
+      --rule: #d8d4cc; --accent: #b05c3a; --accent-light: #d4896a;
+      --gap: clamp(2rem, 5vw, 5rem);
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      background: var(--cream); color: var(--ink);
+      font-family: 'DM Mono', monospace; font-weight: 300;
+      font-size: clamp(13px, 1.4vw, 15px); line-height: 1.75;
+      overflow-x: hidden; cursor: none;
+    }
+    a { color: inherit; text-decoration: none; }
+    img { display: block; width: 100%; object-fit: cover; }
+    video { display: block; width: 100%; }
+
+    body::before {
+      content: ''; position: fixed; inset: 0; pointer-events: none;
+      z-index: 9998; opacity: .025;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      background-size: 200px;
+    }
+
+    /* Cursor */
+    #cursor { position: fixed; width: 10px; height: 10px; background: var(--accent); border-radius: 50%; pointer-events: none; z-index: 10000; transform: translate(-50%,-50%); mix-blend-mode: multiply; transition: width .3s, height .3s, opacity .3s; }
+    #cursor-ring { position: fixed; width: 36px; height: 36px; border: 1px solid var(--accent); border-radius: 50%; pointer-events: none; z-index: 9999; transform: translate(-50%,-50%); opacity: .5; transition: width .3s, height .3s, opacity .3s; }
+    body.hovering #cursor { width: 48px; height: 48px; opacity: .12; }
+    body.hovering #cursor-ring { opacity: 0; }
+
+    #progress-bar { position: fixed; top: 0; left: 0; height: 2px; background: var(--accent); z-index: 200; width: 0%; }
+
+    /* Nav */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 1.6rem var(--gap); border-bottom: 1px solid transparent;
+      transition: border-color .4s, background .4s;
+    }
+    nav.scrolled { background: rgba(245,242,236,.92); backdrop-filter: blur(12px); border-color: var(--rule); }
+    .nav-logo { font-family: 'Cormorant Garamond', serif; font-size: 1.2rem; font-weight: 300; letter-spacing: .05em; }
+    .back-link {
+      display: inline-flex; align-items: center; gap: .6rem;
+      font-size: .7rem; letter-spacing: .18em; text-transform: uppercase;
+      color: var(--dust); transition: color .2s, gap .3s;
+    }
+    .back-link:hover { color: var(--ink); gap: .3rem; }
+
+    /* Hero */
+    #hero {
+      min-height: 100svh; display: grid; grid-template-rows: 1fr auto;
+      padding: 0; position: relative; overflow: hidden;
+    }
+    .hero-media {
+      position: relative; overflow: hidden; background: var(--ink);
+    }
+    .hero-media video, .hero-media img {
+      width: 100%; height: 100svh; object-fit: cover; opacity: .75;
+    }
+    .hero-overlay {
+      position: absolute; inset: 0;
+      background: linear-gradient(to bottom, transparent 40%, var(--ink) 100%);
+    }
+    .hero-text-over {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      padding: var(--gap);
+    }
+    .hero-project-num {
+      font-size: .68rem; letter-spacing: .22em; text-transform: uppercase;
+      color: var(--accent); margin-bottom: 1rem;
+      opacity: 0; animation: slideUp .7s .3s forwards;
+    }
+    .hero-title {
+      font-family: 'Cormorant Garamond', serif; font-weight: 300;
+      font-size: clamp(3rem, 7vw, 7rem); line-height: 1.0;
+      color: var(--cream); letter-spacing: -.01em;
+      opacity: 0; animation: slideUp .9s .5s forwards;
+    }
+    .hero-title em { font-style: italic; color: var(--accent-light); }
+    .hero-meta {
+      display: flex; gap: 3rem; margin-top: 2rem; padding-top: 2rem;
+      border-top: 1px solid rgba(255,255,255,.15);
+      opacity: 0; animation: slideUp .8s .8s forwards;
+    }
+    .meta-item { }
+    .meta-label { font-size: .62rem; letter-spacing: .18em; text-transform: uppercase; color: rgba(245,242,236,.4); margin-bottom: .3rem; }
+    .meta-value { font-size: .8rem; color: var(--cream); }
+
+    @keyframes slideUp { to { opacity: 1; transform: none; } }
+    @keyframes fadeIn { to { opacity: 1; } }
+
+    /* Content */
+    .content-wrap { max-width: 1100px; margin: 0 auto; padding: clamp(4rem,10vh,8rem) var(--gap); }
+
+    /* Section blocks */
+    .block { margin-bottom: clamp(4rem,8vh,6rem); }
+    .block-label {
+      font-size: .65rem; letter-spacing: .22em; text-transform: uppercase;
+      color: var(--accent); margin-bottom: 1.5rem;
+      display: flex; align-items: center; gap: 1rem;
+    }
+    .block-label::after { content: ''; flex: 1; height: 1px; background: var(--rule); }
+
+    .lead {
+      font-family: 'Cormorant Garamond', serif; font-weight: 300;
+      font-size: clamp(1.4rem, 2.5vw, 2rem); line-height: 1.5; color: var(--ink);
+    }
+    .body-text { font-size: .9rem; color: var(--dust); line-height: 1.95; max-width: 70ch; }
+    .body-text + .body-text { margin-top: 1.2rem; }
+
+    /* Two-col */
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 4rem; align-items: start; }
+    .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 2rem; }
+
+    /* Tools */
+    .tools-grid { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: 1rem; }
+    .tool-tag {
+      font-size: .65rem; letter-spacing: .14em; text-transform: uppercase;
+      border: 1px solid var(--rule); padding: .35rem .9rem;
+      border-radius: 100px; color: var(--dust);
+      transition: border-color .2s, color .2s;
+    }
+    .tool-tag:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* Steps */
+    .steps { display: flex; flex-direction: column; gap: 0; }
+    .step {
+      display: grid; grid-template-columns: 3rem 1fr; gap: 1.5rem;
+      padding: 1.5rem 0; border-top: 1px solid var(--rule);
+      opacity: 0; transform: translateX(-12px);
+      transition: opacity .6s ease, transform .6s ease;
+    }
+    .step.visible { opacity: 1; transform: none; }
+    .step-num {
+      font-family: 'Cormorant Garamond', serif; font-size: 2rem;
+      font-weight: 300; color: var(--accent); line-height: 1;
+      padding-top: .1rem;
+    }
+    .step-body h4 {
+      font-family: 'Cormorant Garamond', serif; font-size: 1.2rem;
+      font-weight: 300; margin-bottom: .4rem;
+    }
+    .step-body p { font-size: .82rem; color: var(--dust); line-height: 1.8; }
+
+    /* Learnings */
+    .learnings { display: flex; flex-direction: column; gap: 0; }
+    .learning {
+      padding: 2rem 0; border-top: 1px solid var(--rule);
+      display: grid; grid-template-columns: 2rem 1fr; gap: 1.5rem; align-items: start;
+      opacity: 0; transform: translateY(16px); transition: opacity .7s ease, transform .7s ease;
+    }
+    .learning.visible { opacity: 1; transform: none; }
+    .learning-dot { width: 6px; height: 6px; background: var(--accent); border-radius: 50%; margin-top: .6rem; }
+    .learning p { font-size: .88rem; color: var(--dust); line-height: 1.9; }
+    .learning p em { color: var(--ink); font-style: normal; font-family: 'Cormorant Garamond', serif; font-size: 1.05em; }
+
+    /* Media blocks */
+    .media-full {
+      aspect-ratio: 16/9; background: var(--rule); overflow: hidden; margin: 3rem 0;
+      opacity: 0; transition: opacity .8s ease;
+    }
+    .media-full.visible { opacity: 1; }
+    .media-full video, .media-full img { width: 100%; height: 100%; object-fit: cover; }
+
+    .media-half {
+      aspect-ratio: 4/3; background: var(--rule); overflow: hidden;
+    }
+    .media-half video, .media-half img { width: 100%; height: 100%; object-fit: cover; }
+
+    .img-placeholder {
+      width: 100%; height: 100%; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: .6rem;
+      color: var(--dust); font-size: .65rem; letter-spacing: .14em;
+      text-transform: uppercase; text-align: center; padding: 1rem;
+    }
+    .img-placeholder svg { opacity: .3; }
+
+    /* Stat callouts */
+    .stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; margin: 3rem 0; }
+    .stat-block {
+      padding: 2rem; border: 1px solid var(--rule); margin: -1px 0 0 -1px;
+      text-align: center;
+    }
+    .stat-big {
+      font-family: 'Cormorant Garamond', serif; font-size: 3rem;
+      font-weight: 300; color: var(--accent); line-height: 1;
+    }
+    .stat-desc { font-size: .68rem; letter-spacing: .14em; text-transform: uppercase; color: var(--dust); margin-top: .5rem; }
+
+    /* Quote / pull */
+    .pull-quote {
+      border-left: 2px solid var(--accent); padding: 1.5rem 2rem;
+      margin: 3rem 0; background: rgba(176,92,58,.04);
+    }
+    .pull-quote p {
+      font-family: 'Cormorant Garamond', serif; font-size: clamp(1.1rem, 2vw, 1.5rem);
+      font-weight: 300; font-style: italic; color: var(--ink); line-height: 1.6;
+    }
+
+    /* Next project */
+    .next-project {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 3rem 0; border-top: 1px solid var(--rule);
+      margin-top: 6rem; transition: padding-right .3s;
+    }
+    .next-project:hover { padding-right: .5rem; }
+    .next-label { font-size: .65rem; letter-spacing: .2em; text-transform: uppercase; color: var(--dust); margin-bottom: .5rem; }
+    .next-title { font-family: 'Cormorant Garamond', serif; font-size: clamp(1.5rem, 3vw, 2.5rem); font-weight: 300; }
+    .next-arrow { font-size: 2rem; color: var(--accent); transition: transform .3s; }
+    .next-project:hover .next-arrow { transform: translateX(8px); }
+
+    /* Fade in utility */
+    .fade-in { opacity: 0; transform: translateY(20px); transition: opacity .7s ease, transform .7s ease; }
+    .fade-in.visible { opacity: 1; transform: none; }
+
+    footer { padding: 2rem var(--gap); border-top: 1px solid var(--rule); display: flex; justify-content: space-between; align-items: center; font-size: .65rem; letter-spacing: .14em; text-transform: uppercase; color: var(--dust); }
+
+    @media (max-width: 760px) {
+      .two-col, .three-col, .stat-row { grid-template-columns: 1fr; }
+      .hero-meta { flex-wrap: wrap; gap: 1.5rem; }
+      body { cursor: auto; }
+      #cursor, #cursor-ring { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div id="cursor"></div>
+  <div id="cursor-ring"></div>
+  <div id="progress-bar"></div>
+
+  <nav id="nav">
+    <span class="nav-logo">Parushi Sharma</span>
+    <a class="back-link" href="index.html">
+      <svg width="14" height="8" viewBox="0 0 16 8" fill="none"><path d="M16 4H2M6 1L2 4l4 3" stroke="currentColor" stroke-width="1.2"/></svg>
+      Back to work
+    </a>
+  </nav>
+
+  <!-- ═══ HERO ══════════════════════════════════════════════════════════ -->
+  <section id="hero">
+    <div class="hero-media">
+      <!--
+        📸 HERO MEDIA — replace with your dice robot video:
+        <video src="media/dice_roller.mp4" autoplay muted loop playsinline></video>
+        Or a photo: <img src="images/robot-hero.jpg" alt="Robotic arm" />
+      -->
+      <video src="media/dice_roller.MOV" autoplay muted loop playsinline></video>
+      <div class="hero-overlay"></div>
+      <div class="hero-text-over">
+        <p class="hero-project-num">Project 01 — Robotics</p>
+        <h1 class="hero-title">Robotic Arm<br/>for <em>Object</em><br/>Manipulation</h1>
+        <div class="hero-meta">
+          <div class="meta-item">
+            <div class="meta-label">Type</div>
+            <div class="meta-value">Personal Project</div>
+          </div>
+          <div class="meta-item">
+            <div class="meta-label">Stack</div>
+            <div class="meta-value">Arduino · C · Servo Motors</div>
+          </div>
+          <div class="meta-item">
+            <div class="meta-label">Status</div>
+            <div class="meta-value">Complete</div>
+          </div>
+          <div class="meta-item">
+            <div class="meta-label">GitHub</div>
+            <div class="meta-value"><a href="https://github.com/parushis/Robotic-Arm-for-Object-Manipulation" target="_blank" rel="noopener" style="color:var(--accent-light); border-bottom: 1px solid var(--accent-light);">View repo →</a></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ CONTENT ═══════════════════════════════════════════════════════ -->
+  <div class="content-wrap">
+
+    <!-- Overview -->
+    <div class="block fade-in">
+      <div class="block-label">Overview</div>
+      <p class="lead">My first robot. Learning fundamental concepts in building and programming a robotic arm — from scratch, in the real world.</p>
+    </div>
+
+    <div class="two-col fade-in">
+      <div>
+        <p class="body-text">This project was the starting point of my robotics journey. I built a robotic arm and programmed it to manipulate objects — specifically, to pick up and roll dice. The goal wasn't a polished product; it was to get my hands dirty with the full stack of robotics: hardware assembly, motor control, and C programming on embedded systems.</p>
+        <p class="body-text" style="margin-top:1.2rem">What drew me to robotics was the gap between simulation and reality. Tools like Gazebo and RViz can model a world — but they can't teach you what happens when a power supply delivers inconsistent voltage and your servo starts jittering at 3am.</p>
+      </div>
+      <div>
+        <div class="block-label" style="margin-bottom:1rem">Tools &amp; Hardware</div>
+        <div class="tools-grid">
+          <span class="tool-tag">Arduino</span>
+          <span class="tool-tag">C</span>
+          <span class="tool-tag">Servo Motors</span>
+          <span class="tool-tag">Knob Shield</span>
+          <span class="tool-tag">ROS2</span>
+          <span class="tool-tag">Gazebo</span>
+          <span class="tool-tag">RViz</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Media -->
+    <div class="media-full fade-in">
+      <!--
+        📸 FULL-WIDTH MEDIA:
+        Replace with a wide photo of the robot in action, on your desk, or mid-task.
+        <img src="images/robot-wide.jpg" alt="Robotic arm picking up dice" />
+        Recommended: 1600 × 900px
+      -->
+      <div class="img-placeholder" style="height:100%">
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none"><rect x="6" y="10" width="36" height="28" rx="2" stroke="currentColor" stroke-width="1.2"/><circle cx="24" cy="24" r="7" stroke="currentColor" stroke-width="1.2"/></svg>
+        <span>Wide robot photo — 1600 × 900px<br/>Setup on desk, arm in action</span>
+      </div>
+    </div>
+
+    <!-- What I built -->
+    <div class="block fade-in">
+      <div class="block-label">What I built</div>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">01</div>
+          <div class="step-body">
+            <h4>Assembled the hardware</h4>
+            <p>Built the physical arm from servo motors and a knob shield, wiring everything to an Arduino. Learned how small tolerances in mechanical assembly compound into large positional errors.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">02</div>
+          <div class="step-body">
+            <h4>Programmed motion in C</h4>
+            <p>Wrote C code to control servo positions using Action Groups — predefined motion sequences the arm could execute. Learned about Baud Rate, degrees of freedom, and how to map real-world positions to motor angles.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">03</div>
+          <div class="step-body">
+            <h4>Taught it to roll dice</h4>
+            <p>Gave the robot a purpose: pick up a die, hold it, and release it in a controlled roll. Having a concrete task turned abstract debugging into motivated problem-solving — when it wasn't working, I had a reason to keep going.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">04</div>
+          <div class="step-body">
+            <h4>Debugged real-world failures</h4>
+            <p>The arm developed 'jitters' from an underpowered supply. Tracing that back to the root cause — and fixing it — taught me more about reliable embedded systems than any simulation could.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stat-row fade-in">
+      <div class="stat-block">
+        <div class="stat-big">4</div>
+        <div class="stat-desc">Degrees of freedom</div>
+      </div>
+      <div class="stat-block">
+        <div class="stat-big">1st</div>
+        <div class="stat-desc">Physical robot I built</div>
+      </div>
+      <div class="stat-block">
+        <div class="stat-big">∞</div>
+        <div class="stat-desc">Dice rolled in testing</div>
+      </div>
+    </div>
+
+    <!-- Photo pair -->
+    <div class="two-col fade-in" style="margin: 3rem 0;">
+      <div class="media-half">
+        <!--
+          📸 PHOTO 1: Close-up of the arm hardware / wiring
+          <img src="images/robot-closeup.jpg" alt="Robotic arm close-up" />
+        -->
+        <div class="img-placeholder">
+          <svg width="36" height="36" viewBox="0 0 48 48" fill="none"><rect x="6" y="10" width="36" height="28" rx="2" stroke="currentColor" stroke-width="1.2"/><circle cx="24" cy="24" r="7" stroke="currentColor" stroke-width="1.2"/></svg>
+          <span>Close-up of arm / wiring<br/>800 × 600px</span>
+        </div>
+      </div>
+      <div class="media-half">
+        <!--
+          📸 PHOTO 2: Dice being picked up, or RViz/Gazebo screenshot
+          <img src="images/robot-dice.jpg" alt="Arm picking up dice" />
+        -->
+        <div class="img-placeholder">
+          <svg width="36" height="36" viewBox="0 0 48 48" fill="none"><rect x="6" y="10" width="36" height="28" rx="3" stroke="currentColor" stroke-width="1.2"/><circle cx="17" cy="19" r="2" fill="currentColor"/><circle cx="31" cy="29" r="2" fill="currentColor"/></svg>
+          <span>Arm picking up dice<br/>or RViz screenshot — 800 × 600px</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pull quote -->
+    <div class="pull-quote fade-in">
+      <p>"Simulation tools like Gazebo or RViz can only go so far. Running into real-world problems like 'jitters' from not enough power taught me how crucial reliability will be for human-centric tasks."</p>
+    </div>
+
+    <!-- Learnings -->
+    <div class="block fade-in">
+      <div class="block-label">What I learned</div>
+      <div class="learnings">
+        <div class="learning">
+          <div class="learning-dot"></div>
+          <p><em>Software, mechanics, and electronics are inseparable.</em> Building a robot requires holding all three in your head at once. A bug in your code might actually be a mechanical tolerance issue, or a power delivery problem.</p>
+        </div>
+        <div class="learning">
+          <div class="learning-dot"></div>
+          <p><em>Purpose is a debugging tool.</em> Having a goal — rolling dice — gave me motivation to push through failure. Robots that serve a human need are more motivating to fix than robots that serve a spec.</p>
+        </div>
+        <div class="learning">
+          <div class="learning-dot"></div>
+          <p><em>The leading question this project raised:</em> how can I teach a robot intuitively? Using kinematics, computer vision, and ML, this becomes achievable — and it's the direction I want to go next.</p>
+        </div>
+        <div class="learning">
+          <div class="learning-dot"></div>
+          <p><em>Real-world reliability is non-negotiable for human-centric tasks.</em> A robot that jitters in a lab is a curiosity. A robot that jitters around a person is a liability. This project made that concrete.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Next project -->
+    <a class="next-project" href="sauceathon.html">
+      <div>
+        <div class="next-label">Next project</div>
+        <div class="next-title">Sauceathon — Robotics Hackathon</div>
+      </div>
+      <div class="next-arrow">→</div>
+    </a>
+
+  </div>
+
+  <footer>
+    <span>© 2025 Parushi Sharma</span>
+    <a href="index.html" style="color:var(--dust); transition:color .2s" onmouseover="this.style.color='var(--ink)'" onmouseout="this.style.color='var(--dust)'">← Back to all work</a>
+  </footer>
+
+  <script>
+    const cur=document.getElementById('cursor'), ring=document.getElementById('cursor-ring');
+    let mx=0,my=0,rx=0,ry=0;
+    document.addEventListener('mousemove',e=>{mx=e.clientX;my=e.clientY;});
+    (function tick(){
+      rx+=(mx-rx)*.13; ry+=(my-ry)*.13;
+      cur.style.cssText+=`;left:${mx}px;top:${my}px`;
+      ring.style.cssText+=`;left:${rx}px;top:${ry}px`;
+      requestAnimationFrame(tick);
+    })();
+    document.querySelectorAll('a,button').forEach(el=>{
+      el.addEventListener('mouseenter',()=>document.body.classList.add('hovering'));
+      el.addEventListener('mouseleave',()=>document.body.classList.remove('hovering'));
+    });
+
+    const bar=document.getElementById('progress-bar');
+    window.addEventListener('scroll',()=>{
+      bar.style.width=(scrollY/(document.body.scrollHeight-innerHeight)*100)+'%';
+      document.getElementById('nav').classList.toggle('scrolled',scrollY>60);
+    });
+
+    const io=new IntersectionObserver(entries=>{
+      entries.forEach(e=>{
+        if(!e.isIntersecting)return;
+        e.target.classList.add('visible');
+        io.unobserve(e.target);
+      });
+    },{threshold:.1,rootMargin:'0px 0px -50px 0px'});
+    document.querySelectorAll('.fade-in,.step,.learning,.media-full').forEach(el=>io.observe(el));
+
+    /* Stagger steps and learnings */
+    const sio=new IntersectionObserver(entries=>{
+      entries.forEach(e=>{
+        if(!e.isIntersecting)return;
+        e.target.querySelectorAll('.step').forEach((s,i)=>setTimeout(()=>s.classList.add('visible'),i*100));
+        sio.unobserve(e.target);
+      });
+    },{threshold:.1});
+    document.querySelectorAll('.steps').forEach(el=>sio.observe(el));
+
+    const lio=new IntersectionObserver(entries=>{
+      entries.forEach(e=>{
+        if(!e.isIntersecting)return;
+        e.target.querySelectorAll('.learning').forEach((l,i)=>setTimeout(()=>l.classList.add('visible'),i*120));
+        lio.unobserve(e.target);
+      });
+    },{threshold:.1});
+    document.querySelectorAll('.learnings').forEach(el=>lio.observe(el));
+  </script>
+</body>
+</html>
