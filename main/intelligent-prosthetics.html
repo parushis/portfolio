@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EMG-Controlled Limb with AI — Parushi Sharma</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --cream: #f5f2ec; --ink: #1a1814; --dust: #9e9891;
+      --rule: #d8d4cc; --accent: #b05c3a; --accent-light: #d4896a;
+      --gap: clamp(2rem, 5vw, 5rem);
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      background: var(--cream); color: var(--ink);
+      font-family: 'DM Mono', monospace; font-weight: 300;
+      font-size: clamp(13px, 1.4vw, 15px); line-height: 1.75;
+      overflow-x: hidden; cursor: none;
+    }
+    a { color: inherit; text-decoration: none; }
+    img { display: block; width: 100%; object-fit: cover; }
+
+    body::before {
+      content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 9998; opacity: .025;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      background-size: 200px;
+    }
+
+    #cursor { position: fixed; width: 10px; height: 10px; background: var(--accent); border-radius: 50%; pointer-events: none; z-index: 10000; transform: translate(-50%,-50%); mix-blend-mode: multiply; transition: width .3s, height .3s, opacity .3s; }
+    #cursor-ring { position: fixed; width: 36px; height: 36px; border: 1px solid var(--accent); border-radius: 50%; pointer-events: none; z-index: 9999; transform: translate(-50%,-50%); opacity: .5; transition: width .3s, height .3s, opacity .3s; }
+    body.hovering #cursor { width: 48px; height: 48px; opacity: .12; }
+    body.hovering #cursor-ring { opacity: 0; }
+    #progress-bar { position: fixed; top: 0; left: 0; height: 2px; background: var(--accent); z-index: 200; width: 0%; }
+
+    nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; display: flex; justify-content: space-between; align-items: center; padding: 1.6rem var(--gap); border-bottom: 1px solid transparent; transition: border-color .4s, background .4s; }
+    nav.scrolled { background: rgba(245,242,236,.92); backdrop-filter: blur(12px); border-color: var(--rule); }
+    .nav-logo { font-family: 'Cormorant Garamond', serif; font-size: 1.2rem; font-weight: 300; letter-spacing: .05em; }
+    .back-link { display: inline-flex; align-items: center; gap: .6rem; font-size: .7rem; letter-spacing: .18em; text-transform: uppercase; color: var(--dust); transition: color .2s, gap .3s; }
+    .back-link:hover { color: var(--ink); gap: .3rem; }
+
+    /* ── Hero — slow pulse, clinical feel ───────────────────── */
+    #hero {
+      min-height: 100svh; background: var(--ink);
+      display: flex; flex-direction: column; justify-content: flex-end;
+      padding: var(--gap); position: relative; overflow: hidden;
+    }
+
+    /* EMG waveform background */
+    #emg-canvas { position: absolute; inset: 0; opacity: .18; }
+
+    /* In-progress badge */
+    .in-progress-badge {
+      display: inline-flex; align-items: center; gap: .6rem;
+      border: 1px solid var(--accent); padding: .35rem .9rem;
+      border-radius: 100px; font-size: .65rem; letter-spacing: .18em;
+      text-transform: uppercase; color: var(--accent);
+      margin-bottom: 1.5rem; position: relative; z-index: 1;
+      opacity: 0; animation: slideUp .6s .3s forwards;
+    }
+    .pulse-dot {
+      width: 6px; height: 6px; background: var(--accent);
+      border-radius: 50%; animation: pulse 1.8s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: .3; transform: scale(.6); }
+    }
+
+    .hero-title { font-family: 'Cormorant Garamond', serif; font-weight: 300; font-size: clamp(3rem, 7vw, 7.5rem); line-height: .95; color: var(--cream); letter-spacing: -.02em; position: relative; z-index: 1; opacity: 0; animation: slideUp .9s .5s forwards; }
+    .hero-title em { font-style: italic; color: var(--accent-light); }
+    .hero-tagline { margin-top: 1.5rem; font-size: .85rem; color: rgba(245,242,236,.5); line-height: 1.8; max-width: 55ch; position: relative; z-index: 1; opacity: 0; animation: slideUp .8s .75s forwards; }
+    .hero-meta { display: flex; flex-wrap: wrap; gap: 3rem; margin-top: 2.5rem; padding-top: 2rem; border-top: 1px solid rgba(255,255,255,.1); position: relative; z-index: 1; opacity: 0; animation: slideUp .8s .95s forwards; }
+    .meta-label { font-size: .6rem; letter-spacing: .18em; text-transform: uppercase; color: rgba(245,242,236,.3); margin-bottom: .3rem; }
+    .meta-value { font-size: .78rem; color: var(--cream); }
+
+    @keyframes slideUp { to { opacity: 1; transform: none; } }
+
+    /* ── Content ────────────────────────────────────────────── */
+    .content-wrap { max-width: 1100px; margin: 0 auto; padding: clamp(4rem,10vh,8rem) var(--gap); }
+    .block { margin-bottom: clamp(4rem,8vh,6rem); }
+    .block-label { font-size: .65rem; letter-spacing: .22em; text-transform: uppercase; color: var(--accent); margin-bottom: 1.5rem; display: flex; align-items: center; gap: 1rem; }
+    .block-label::after { content: ''; flex: 1; height: 1px; background: var(--rule); }
+    .lead { font-family: 'Cormorant Garamond', serif; font-weight: 300; font-size: clamp(1.4rem,2.5vw,2rem); line-height: 1.5; }
+    .body-text { font-size: .9rem; color: var(--dust); line-height: 1.95; max-width: 70ch; }
+
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 4rem; align-items: start; }
+    .tools-grid { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: 1rem; }
+    .tool-tag { font-size: .65rem; letter-spacing: .14em; text-transform: uppercase; border: 1px solid var(--rule); padding: .35rem .9rem; border-radius: 100px; color: var(--dust); transition: border-color .2s, color .2s; }
+    .tool-tag:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ── Problems grid ──────────────────────────────────────── */
+    .problems-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+    .problem-card {
+      padding: 2.5rem; border: 1px solid var(--rule); margin: -1px 0 0 -1px;
+      opacity: 0; transform: translateY(16px); transition: opacity .6s ease, transform .6s ease;
+    }
+    .problem-card.visible { opacity: 1; transform: none; }
+    .problem-card:hover { background: rgba(176,92,58,.03); }
+    .problem-num { font-family: 'Cormorant Garamond', serif; font-size: 3rem; font-weight: 300; color: var(--rule); line-height: 1; margin-bottom: .8rem; }
+    .problem-card h4 { font-family: 'Cormorant Garamond', serif; font-size: 1.2rem; font-weight: 300; margin-bottom: .6rem; color: var(--accent); }
+    .problem-card p { font-size: .82rem; color: var(--dust); line-height: 1.85; }
+
+    /* ── Thesis strip ───────────────────────────────────────── */
+    .thesis-strip {
+      background: var(--accent); padding: 3rem var(--gap);
+      margin: 0;
+    }
+    .thesis-inner { max-width: 1100px; margin: 0 auto; }
+    .thesis-label { font-size: .62rem; letter-spacing: .2em; text-transform: uppercase; color: rgba(245,242,236,.6); margin-bottom: 1rem; }
+    .thesis-text { font-family: 'Cormorant Garamond', serif; font-size: clamp(1.4rem, 3vw, 2.5rem); font-weight: 300; line-height: 1.35; color: var(--cream); }
+
+    /* ── Ideas / proposals ──────────────────────────────────── */
+    .ideas { display: flex; flex-direction: column; }
+    .idea {
+      display: grid; grid-template-columns: 2rem 1fr; gap: 1.5rem;
+      padding: 2rem 0; border-top: 1px solid var(--rule); align-items: start;
+      opacity: 0; transform: translateX(-10px); transition: opacity .6s ease, transform .6s ease;
+    }
+    .idea.visible { opacity: 1; transform: none; }
+    .idea-dot { width: 6px; height: 6px; background: var(--accent); border-radius: 50%; margin-top: .65rem; }
+    .idea p { font-size: .88rem; color: var(--dust); line-height: 1.9; }
+    .idea p em { color: var(--ink); font-style: normal; font-family: 'Cormorant Garamond', serif; font-size: 1.05em; }
+
+    /* ── Cascade model diagram ──────────────────────────────── */
+    .diagram-wrap { background: var(--ink); padding: 3rem; margin: 3rem 0; position: relative; overflow: hidden; }
+    .diagram-wrap::before { content: ''; position: absolute; inset: 0; background-image: linear-gradient(rgba(176,92,58,.06) 1px, transparent 1px), linear-gradient(90deg, rgba(176,92,58,.06) 1px, transparent 1px); background-size: 40px 40px; }
+    .diagram-label { font-size: .62rem; letter-spacing: .2em; text-transform: uppercase; color: rgba(245,242,236,.3); margin-bottom: 2rem; position: relative; z-index: 1; }
+
+    /* ── Stats ──────────────────────────────────────────────── */
+    .stat-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 0; margin: 3rem 0; }
+    .stat-block { padding: 2rem 1.5rem; border: 1px solid var(--rule); margin: -1px 0 0 -1px; text-align: center; }
+    .stat-big { font-family: 'Cormorant Garamond', serif; font-size: 3rem; font-weight: 300; color: var(--accent); line-height: 1; }
+    .stat-desc { font-size: .65rem; letter-spacing: .14em; text-transform: uppercase; color: var(--dust); margin-top: .5rem; }
+
+    .pull-quote { border-left: 2px solid var(--accent); padding: 1.5rem 2rem; margin: 3rem 0; background: rgba(176,92,58,.04); }
+    .pull-quote p { font-family: 'Cormorant Garamond', serif; font-size: clamp(1.1rem,2vw,1.5rem); font-weight: 300; font-style: italic; color: var(--ink); line-height: 1.6; }
+
+    /* ── Media ──────────────────────────────────────────────── */
+    .media-half { aspect-ratio: 4/3; background: var(--rule); overflow: hidden; }
+    .media-half img { width: 100%; height: 100%; object-fit: cover; }
+    .media-caption { font-size: .65rem; letter-spacing: .12em; color: var(--dust); margin-top: .8rem; text-transform: uppercase; }
+    .img-placeholder { width: 100%; height: 100%; min-height: 200px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .6rem; color: var(--dust); font-size: .65rem; letter-spacing: .14em; text-transform: uppercase; text-align: center; padding: 1rem; }
+    .img-placeholder svg { opacity: .3; }
+
+    /* ── Learnings ──────────────────────────────────────────── */
+    .learnings { display: flex; flex-direction: column; }
+    .learning { padding: 2rem 0; border-top: 1px solid var(--rule); display: grid; grid-template-columns: 2rem 1fr; gap: 1.5rem; align-items: start; opacity: 0; transform: translateY(16px); transition: opacity .7s ease, transform .7s ease; }
+    .learning.visible { opacity: 1; transform: none; }
+    .learning-dot { width: 6px; height: 6px; background: var(--accent); border-radius: 50%; margin-top: .65rem; }
+    .learning p { font-size: .88rem; color: var(--dust); line-height: 1.9; }
+    .learning p em { color: var(--ink); font-style: normal; font-family: 'Cormorant Garamond', serif; font-size: 1.05em; }
+
+    .fade-in { opacity: 0; transform: translateY(20px); transition: opacity .7s ease, transform .7s ease; }
+    .fade-in.visible { opacity: 1; transform: none; }
+
+    /* ── Back to index — full width CTA ────────────────────── */
+    .all-work-cta {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 4rem var(--gap); background: var(--ink); margin-top: 0;
+      transition: background .3s;
+    }
+    .all-work-cta:hover { background: #221e19; }
+    .cta-label { font-size: .65rem; letter-spacing: .2em; text-transform: uppercase; color: rgba(245,242,236,.3); margin-bottom: .6rem; }
+    .cta-title { font-family: 'Cormorant Garamond', serif; font-size: clamp(1.5rem,3vw,2.5rem); font-weight: 300; color: var(--cream); }
+    .cta-arrow { font-size: 2.5rem; color: var(--accent); transition: transform .3s; }
+    .all-work-cta:hover .cta-arrow { transform: translateX(-8px); }
+
+    footer { padding: 2rem var(--gap); border-top: 1px solid rgba(255,255,255,.08); background: var(--ink); display: flex; justify-content: space-between; align-items: center; font-size: .65rem; letter-spacing: .14em; text-transform: uppercase; color: rgba(245,242,236,.3); }
+
+    @media (max-width: 760px) {
+      .two-col, .problems-grid { grid-template-columns: 1fr; }
+      .stat-row { grid-template-columns: 1fr 1fr; }
+      body { cursor: auto; }
+      #cursor, #cursor-ring { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div id="cursor"></div>
+  <div id="cursor-ring"></div>
+  <div id="progress-bar"></div>
+
+  <nav id="nav">
+    <span class="nav-logo">Parushi Sharma</span>
+    <a class="back-link" href="index.html">
+      <svg width="14" height="8" viewBox="0 0 16 8" fill="none"><path d="M16 4H2M6 1L2 4l4 3" stroke="currentColor" stroke-width="1.2"/></svg>
+      Back to work
+    </a>
+  </nav>
+
+  <!-- ═══ HERO ══════════════════════════════════════════════════════════ -->
+  <section id="hero">
+    <canvas id="emg-canvas"></canvas>
+
+    <div class="in-progress-badge">
+      <div class="pulse-dot"></div>
+      In Progress
+    </div>
+    <h1 class="hero-title">EMG-Controlled<br/><em>Limb</em> with AI</h1>
+    <p class="hero-tagline">A research proposal for an accessible, private, and accurate robotic prosthetic that returns user functionality to 100%, and continuously negotiates control, intent, and trust with its user.</p>
+    <div class="hero-meta">
+      <div><div class="meta-label">Type</div><div class="meta-value">Research Proposal</div></div>
+      <div><div class="meta-label">Signal</div><div class="meta-value">EMG (electromyography)</div></div>
+      <div><div class="meta-label">Goal</div><div class="meta-value">100% functionality return</div></div>
+      <div><div class="meta-label">Status</div><div class="meta-value">Active research &amp; design</div></div>
+    </div>
+  </section>
+
+  <!-- ═══ CONTENT ═══════════════════════════════════════════════════════ -->
+  <div class="content-wrap">
+
+    <div class="block fade-in">
+      <div class="block-label">Overview</div>
+      <p class="lead">Current intelligent prosthetics are expensive, inaccurate, and erode user privacy. This proposal designs a better approach, one that treats the prosthetic not as a tool, but as a co-robot.</p>
+    </div>
+
+    <div class="two-col fade-in">
+      <div>
+        <p class="body-text">This project began as an evaluation of the current state of intelligent prosthetics research — identifying the gaps that prevent existing devices from delivering on their promise. What emerged was a design proposal built around three core constraints: accessibility, privacy, and accuracy.</p>
+        <p class="body-text" style="margin-top:1.2rem">The central insight is that EMG signals, electrical signals produced by muscles, are noisy, user-specific, and context-dependent. They're hard to parse, but that difficulty is exactly what makes them interesting. Intelligence that works with messy, embodied signals is intelligence that works in the real world.</p>
+      </div>
+      <div>
+        <div class="block-label" style="margin-bottom:1rem">Proposed Stack</div>
+        <div class="tools-grid">
+          <span class="tool-tag">EMG Sensing</span>
+          <span class="tool-tag">Distributed Computing</span>
+          <span class="tool-tag">ML (Cascaded Models)</span>
+          <span class="tool-tag">Homomorphic Encryption</span>
+          <span class="tool-tag">Edge Computing</span>
+          <span class="tool-tag">Real-Time Feedback</span>
+          <span class="tool-tag">Computer Vision</span>
+          <span class="tool-tag">Kinematics</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stat-row fade-in">
+      <div class="stat-block"><div class="stat-big">96%</div><div class="stat-desc">Best current accuracy (to beat)</div></div>
+      <div class="stat-block"><div class="stat-big">100%</div><div class="stat-desc">Target functionality return</div></div>
+      <div class="stat-block"><div class="stat-big">0</div><div class="stat-desc">Compromises on privacy</div></div>
+    </div>
+
+    <!-- Problems -->
+    <div class="block fade-in">
+      <div class="block-label">Problems with current research</div>
+      <p class="lead" style="margin-bottom:2.5rem">Four gaps that existing prosthetics fail to close.</p>
+    </div>
+    <div class="problems-grid">
+      <div class="problem-card">
+        <div class="problem-num">01</div>
+        <h4>High cost</h4>
+        <p>Advanced prosthetics remain out of reach for most people who need them. The design prioritizes accessible hardware and edge computing so the intelligence lives on the device, not in an expensive cloud subscription.</p>
+      </div>
+      <div class="problem-card">
+        <div class="problem-num">02</div>
+        <h4>Low accuracy &amp; recalibration issues</h4>
+        <p>Current devices achieve a high of 96% accuracy but require frequent recalibration as muscle signal patterns shift with fatigue, temperature, and time. This proposal trains for combined movements to build robustness instead of just discrete gestures.</p>
+      </div>
+      <div class="problem-card">
+        <div class="problem-num">03</div>
+        <h4>Personal data privacy</h4>
+        <p>EMG data is deeply personal, it encodes intent, emotion, and physical state. Current devices send this data to external servers. This proposal uses homomorphic encryption to enable personalization while keeping data on-device and private.</p>
+      </div>
+      <div class="problem-card">
+        <div class="problem-num">04</div>
+        <h4>Lack of robust functionality</h4>
+        <p>Most prosthetics support a limited set of discrete gestures. Real human movement is continuous, combined, and context-dependent. The goal of 100% functionality return requires a fundamentally different model of how the device interprets intent.</p>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ═══ THESIS STRIP ══════════════════════════════════════════════════ -->
+  <div class="thesis-strip">
+    <div class="thesis-inner">
+      <div class="thesis-label">Core thesis</div>
+      <p class="thesis-text">"This solution will be a co-robot, that continuously negotiates control, intent, and trust with its user. It is work on the body as assistive technology."</p>
+    </div>
+  </div>
+
+  <div class="content-wrap">
+
+    <!-- Cascade model diagram -->
+    <div class="block fade-in">
+      <div class="block-label">Proposed ML architecture</div>
+      <p class="body-text" style="margin-bottom:2rem">A cascaded model approach: a generic model trained on a broad population provides the baseline, while a personal model fine-tunes on the individual user's signal patterns, adapting over time without requiring full recalibration.</p>
+    </div>
+
+    <div class="diagram-wrap fade-in">
+      <div class="diagram-label">Cascaded ML model — signal to intent</div>
+      <svg viewBox="0 0 860 260" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:100%;position:relative;z-index:1;">
+        <!-- EMG Input -->
+        <rect x="20" y="100" width="140" height="60" rx="3" fill="rgba(245,242,236,.06)" stroke="rgba(176,92,58,.4)" stroke-width="1"/>
+        <text x="90" y="124" text-anchor="middle" font-family="DM Mono,monospace" font-size="8" fill="rgba(245,242,236,.4)" letter-spacing="1.5">EMG SIGNAL</text>
+        <text x="90" y="142" text-anchor="middle" font-family="DM Mono,monospace" font-size="9" fill="#d4896a">Noisy · User-specific</text>
+        <text x="90" y="155" text-anchor="middle" font-family="DM Mono,monospace" font-size="8" fill="rgba(245,242,236,.3)">Context-dependent</text>
+
+        <!-- Arrow -->
+        <line x1="160" y1="130" x2="210" y2="130" stroke="rgba(176,92,58,.4)" stroke-width="1" stroke-dasharray="4 3"/>
+        <path d="M206 126l8 4-8 4" stroke="rgba(176,92,58,.4)" stroke-width="1" fill="none"/>
+
+        <!-- Feature extraction -->
+        <rect x="210" y="80" width="140" height="100" rx="3" fill="rgba(245,242,236,.04)" stroke="rgba(176,92,58,.3)" stroke-width="1"/>
+        <text x="280" y="108" text-anchor="middle" font-family="DM Mono,monospace" font-size="8" fill="rgba(245,242,236,.35)" letter-spacing="1.5">FEATURE</text>
+        <text x="280" y="122" text-anchor="middle" font-family="DM Mono,monospace" font-size="8" fill="rgba(245,242,236,.35)" letter-spacing="1.5">EXTRACTION</text>
+        <text x="280" y="144" text-anchor="middle" font-family="DM Mono,monospace" font-size="9" fill="#d4896a">Combined</text>
+        <text x="280" y="158" text-anchor="middle" font-family="DM Mono,monospace" font-size="9" fill="#d4896a">movements</text>
+        <text x="280" y="170" text-anchor="middle" font-family="DM Mono,monospace" font-size="8" fill="rgba(245,242,236,.25)">(not discrete gestures)</text>
+
+        <!-- Arrow -->
+        <line x1="350" y1="130" x2="400" y2="130" stroke="rgba(176,92,58,.4)" stroke-width="1" stroke-dasharray="4 3"/>
+        <path d="M396 126l8 4-8 4" stroke="rgba(176,92,58,.4)" stroke-width="1" fill="none"/>
+
+        <!-- Cascade box -->
+        <rect x="400" y="60" width="200" height="140" rx="3" fill="rgba(176,92,58,.1)" stroke="#b05c3a" stroke-width="1"/>
+        <text x="500" y="86" text-anchor="middle" font-family="DM Mono,monospace" font-size="8" fill="rgba(245,242,236,.4)" letter-spacing="1.5">CASCADED MODELS</text>
+        <rect x="415" y="95" width="170" height="36" rx="2" fill="rgba(245,242,236,.06)" stroke="rgba(176,92,58,.35)" stroke-width=".5"/>
+        <text x="500" y="117" text-anchor="middle" font-family="DM Mono,monospace" font-size="9" fill="#d4896a">Generic model</text>
+        <text x="500" y="130" text-anchor="middle" font-family="DM Mono,monospace" font-size="8" fill="rgba(245,242,236,.3)">(broad population)</text>
+        <rect x="415" y="145" width="170" height="36" rx="2" fill="rgba(176,92,58,.2)" stroke="#b05c3a" stroke-width=".5"/>
+        <text x="500" y="167" text-anchor="middle" font-family="DM Mono,monospace" font-size="9" fill="#f5f2ec">Personal model</text>
+        <text x="500" y="180" text-anchor="middle" font-family="DM Mono,monospace" font-size="8" fill="rgba(245,242,236,.4)">(adapts to user over time)</text>
+
+        <!-- Arrow -->
+        <line x1="600" y1="130" x2="650" y2="130" stroke="rgba(176,92,58,.4)" stroke-width="1" stroke-dasharray="4 3"/>
+        <path d="M646 126l8 4-8 4" stroke="rgba(176,92,58,.4)" stroke-width="1" fill="none"/>
+
+        <!-- Output -->
+        <rect x="650" y="80" width="190" height="100" rx="3" fill="rgba(245,242,236,.06)" stroke="rgba(176,92,58,.3)" stroke-width="1"/>
+        <text x="745" y="108" text-anchor="middle" font-family="DM Mono,monospace" font-size="8" fill="rgba(245,242,236,.35)" letter-spacing="1.5">OUTPUT</text>
+        <text x="745" y="130" text-anchor="middle" font-family="DM Mono,monospace" font-size="9" fill="#d4896a">Motor intent → action</text>
+        <text x="745" y="148" text-anchor="middle" font-family="DM Mono,monospace" font-size="8" fill="rgba(245,242,236,.25)">Real-time feedback loop</text>
+        <text x="745" y="163" text-anchor="middle" font-family="DM Mono,monospace" font-size="8" fill="rgba(245,242,236,.25)">Edge device · encrypted</text>
+
+        <!-- Feedback arrow (bottom) -->
+        <path d="M745 180 Q745 230 500 230 Q280 230 280 180" stroke="rgba(176,92,58,.2)" stroke-width="1" stroke-dasharray="4 3" fill="none"/>
+        <path d="M276 176l8 4-8 4" stroke="rgba(176,92,58,.2)" stroke-width="1" fill="none"/>
+        <text x="500" y="248" text-anchor="middle" font-family="DM Mono,monospace" font-size="7" fill="rgba(176,92,58,.4)" letter-spacing="1">CONTINUOUS RECALIBRATION FEEDBACK</text>
+      </svg>
+    </div>
+
+    <!-- Ideas -->
+    <div class="block fade-in">
+      <div class="block-label">Design proposals</div>
+      <p class="lead" style="margin-bottom:2rem">Four specific ideas that address the gaps in current research.</p>
+      <div class="ideas">
+        <div class="idea">
+          <div class="idea-dot"></div>
+          <p><em>Train for combined movements, not discrete gestures.</em> Instead of classifying pinch, up, down as separate states, train the model on the continuous space of combined movements, closer to how the human nervous system actually operates.</p>
+        </div>
+        <div class="idea">
+          <div class="idea-dot"></div>
+          <p><em>Gather data from both limbless patients and a control group</em> to build a robust training dataset that generalizes across signal variation, not just within a single population. This directly addresses the recalibration brittleness in current devices.</p>
+        </div>
+        <div class="idea">
+          <div class="idea-dot"></div>
+          <p><em>Cascade ML models</em> a generic model trained on the full population, with a personal model layered on top that adapts to the individual user's signal patterns over time. Personalization without full recalibration.</p>
+        </div>
+        <div class="idea">
+          <div class="idea-dot"></div>
+          <p><em>Enable real-time data feedback with personal recalibration offloaded to a nearby edge device</em> such as a smartphone, therefore keeping latency low, keeping data private, and making advanced ML inference accessible without cloud dependency.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="pull-quote fade-in">
+      <p>"EMG is noisy, user-specific, and context-dependent. It confronts how intelligence emerges from difficult-to-parse, embodied signals and that is exactly the problem worth solving."</p>
+    </div>
+
+    <!-- Photo slots -->
+<!--    <div class="two-col fade-in" style="margin:3rem 0;">-->
+<!--      <div>-->
+<!--        <div class="media-half">-->
+<!--          &lt;!&ndash;-->
+<!--            📸 DIAGRAM 1: Your system architecture sketch or research poster-->
+<!--            <img src="images/prosthetics-arch.jpg" alt="System architecture" />-->
+<!--          &ndash;&gt;-->
+<!--          <div class="img-placeholder">-->
+<!--            <svg width="36" height="36" viewBox="0 0 48 48" fill="none"><path d="M16 8v16M24 12v12M32 16v8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><rect x="8" y="32" width="32" height="8" rx="2" stroke="currentColor" stroke-width="1.2"/></svg>-->
+<!--            <span>System architecture sketch<br/>or research poster — 800 × 600px</span>-->
+<!--          </div>-->
+<!--        </div>-->
+<!--        <p class="media-caption">Proposed system architecture</p>-->
+<!--      </div>-->
+<!--      <div>-->
+<!--        <div class="media-half">-->
+<!--          &lt;!&ndash;-->
+<!--            📸 DIAGRAM 2: EMG signal visualization, or reference prosthetic image-->
+<!--            <img src="images/prosthetics-emg.jpg" alt="EMG signal" />-->
+<!--          &ndash;&gt;-->
+<!--          <div class="img-placeholder">-->
+<!--            <svg width="36" height="36" viewBox="0 0 48 48" fill="none"><path d="M4 24h6l4-12 6 24 4-16 4 8 6-4h10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>-->
+<!--            <span>EMG signal visualization<br/>or reference device — 800 × 600px</span>-->
+<!--          </div>-->
+<!--        </div>-->
+<!--        <p class="media-caption">EMG signal characteristics</p>-->
+<!--      </div>-->
+<!--    </div>-->
+
+    <!-- Learnings -->
+    <div class="block fade-in">
+      <div class="block-label">Why this matters</div>
+      <div class="learnings">
+        <div class="learning">
+          <div class="learning-dot"></div>
+          <p><em>This is a co-robot, not a tool.</em> The framing matters. A tool executes commands. A co-robot negotiates — it infers intent, asks for confirmation, adapts over time. That shift in framing changes every design decision downstream.</p>
+        </div>
+        <div class="learning">
+          <div class="learning-dot"></div>
+          <p><em>Agency is the central design question for personal robotics.</em> Where does human intent end and robotic autonomy begin? Designing an EMG-controlled limb forces you to answer that question concretely, in real time, for a real person.</p>
+        </div>
+        <div class="learning">
+          <div class="learning-dot"></div>
+          <p><em>Privacy is not a constraint, it is a feature.</em> Homomorphic encryption enables the device to learn and personalize without ever exposing raw EMG data. Privacy-preserving personalization is the standard this field should be building toward.</p>
+        </div>
+        <div class="learning">
+          <div class="learning-dot"></div>
+          <p><em>The intersection of distributed computing and ML is where this becomes real.</em> The pipeline I built at Microsoft and the ML work at Kwartile converge here — real-time data infrastructure, at the edge, for a human body.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ═══ BACK TO ALL WORK ═══════════════════════════════════════════════ -->
+  <a class="all-work-cta" href="index.html">
+    <div>
+      <div class="cta-label">That's all four projects</div>
+      <div class="cta-title">Back to all work</div>
+    </div>
+    <div class="cta-arrow">←</div>
+  </a>
+
+  <footer>
+    <span>© 2025 Parushi Sharma</span>
+    <span>Engineer &amp; Builder</span>
+  </footer>
+
+  <script>
+    /* Cursor */
+    const cur=document.getElementById('cursor'), ring=document.getElementById('cursor-ring');
+    let mx=0,my=0,rx=0,ry=0;
+    document.addEventListener('mousemove',e=>{mx=e.clientX;my=e.clientY;});
+    (function tick(){
+      rx+=(mx-rx)*.13; ry+=(my-ry)*.13;
+      cur.style.cssText+=`;left:${mx}px;top:${my}px`;
+      ring.style.cssText+=`;left:${rx}px;top:${ry}px`;
+      requestAnimationFrame(tick);
+    })();
+    document.querySelectorAll('a,button,.problem-card').forEach(el=>{
+      el.addEventListener('mouseenter',()=>document.body.classList.add('hovering'));
+      el.addEventListener('mouseleave',()=>document.body.classList.remove('hovering'));
+    });
+
+    /* Progress + nav */
+    const bar=document.getElementById('progress-bar');
+    window.addEventListener('scroll',()=>{
+      bar.style.width=(scrollY/(document.body.scrollHeight-innerHeight)*100)+'%';
+      document.getElementById('nav').classList.toggle('scrolled',scrollY>60);
+    });
+
+    /* EMG waveform canvas */
+    const canvas=document.getElementById('emg-canvas');
+    const ctx=canvas.getContext('2d');
+    let W,H,t=0;
+    function resize(){ W=canvas.width=canvas.offsetWidth; H=canvas.height=canvas.offsetHeight; }
+    resize(); window.addEventListener('resize',resize);
+
+    function drawEMG(){
+      ctx.clearRect(0,0,W,H);
+      const lines=5;
+      for(let l=0;l<lines;l++){
+        const y=H*(l+1)/(lines+1);
+        const amp=18+l*6;
+        ctx.beginPath();
+        ctx.strokeStyle=`rgba(176,92,58,${0.3+l*.1})`;
+        ctx.lineWidth=1;
+        for(let x=0;x<W;x++){
+          const noise=Math.sin(x*.04+t+l)*amp
+            + Math.sin(x*.09+t*1.3+l*2)*amp*.4
+            + Math.sin(x*.2+t*.7+l)*amp*.15
+            + (Math.random()-.5)*3;
+          const vy=y+noise;
+          x===0 ? ctx.moveTo(x,vy) : ctx.lineTo(x,vy);
+        }
+        ctx.stroke();
+      }
+      t+=.018;
+      requestAnimationFrame(drawEMG);
+    }
+    drawEMG();
+
+    /* Intersection observers */
+    const io=new IntersectionObserver(entries=>{
+      entries.forEach(e=>{ if(!e.isIntersecting)return; e.target.classList.add('visible'); io.unobserve(e.target); });
+    },{threshold:.1,rootMargin:'0px 0px -50px 0px'});
+    document.querySelectorAll('.fade-in').forEach(el=>io.observe(el));
+
+    const pio=new IntersectionObserver(entries=>{
+      entries.forEach(e=>{ if(!e.isIntersecting)return; e.target.querySelectorAll('.problem-card').forEach((c,i)=>setTimeout(()=>c.classList.add('visible'),i*100)); pio.unobserve(e.target); });
+    },{threshold:.1});
+    document.querySelectorAll('.problems-grid').forEach(el=>pio.observe(el));
+
+    const iio=new IntersectionObserver(entries=>{
+      entries.forEach(e=>{ if(!e.isIntersecting)return; e.target.querySelectorAll('.idea').forEach((c,i)=>setTimeout(()=>c.classList.add('visible'),i*110)); iio.unobserve(e.target); });
+    },{threshold:.1});
+    document.querySelectorAll('.ideas').forEach(el=>iio.observe(el));
+
+    const lio=new IntersectionObserver(entries=>{
+      entries.forEach(e=>{ if(!e.isIntersecting)return; e.target.querySelectorAll('.learning').forEach((l,i)=>setTimeout(()=>l.classList.add('visible'),i*120)); lio.unobserve(e.target); });
+    },{threshold:.1});
+    document.querySelectorAll('.learnings').forEach(el=>lio.observe(el));
+  </script>
+</body>
+</html>
