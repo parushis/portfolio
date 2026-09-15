@@ -10,8 +10,8 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --cream: #f5f2ec; --ink: #1a1814; --dust: #9e9891;
-      --rule: #d8d4cc; --accent: #b05c3a; --accent-light: #d4896a;
+      --cream: #FFF7D6; --ink: #2C3E5D; --dust: #7FA8D6;
+      --rule: #A8C6E7; --accent: #7FA8D6; --accent-light: #A8C6E7;
       --gap: clamp(2rem, 5vw, 5rem);
     }
     html { scroll-behavior: smooth; }
@@ -659,7 +659,7 @@
         d.x+=(tx-d.x)*.1; d.y+=(ty-d.y)*.1;
         ctx.beginPath();
         ctx.arc(d.x,d.y,1.4+force*2,0,Math.PI*2);
-        ctx.fillStyle=`rgba(176,92,58,${.18+force*.55})`;
+        ctx.fillStyle=`rgba(127,168,214,${.18+force*.55})`;
         ctx.fill();
       });
       requestAnimationFrame(drawDots);
